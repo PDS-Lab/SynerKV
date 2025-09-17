@@ -1,4 +1,4 @@
-# SynerKV: Boosting Write Performance and Cost-Efficiency of LSM-Treeson EBS-S3 Hybrid Cloud Storage
+# SynerKV: A Cost-Efficient Cloud LSM Store by Exploiting Parallelism of Block and Object Hybrid Storage
 
 ## Overview
 
