@@ -1,4 +1,4 @@
-# SynerKV: A Cost-Efficient Cloud LSM Store by Exploiting Parallelism of Block and Object Hybrid Storage
+# SynerKV: A Write-Optimized Cloud LSM Store by Exploiting Parallelism of Block and Object Hybrid Storage
 
 ## Overview
 
