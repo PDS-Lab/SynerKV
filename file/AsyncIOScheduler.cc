@@ -86,6 +86,7 @@ void AsyncIOScheduler::PrintPendingTaskCounts(Logger* logger) const {
 bool AsyncIOScheduler::GetMethod() const {
   int pending = pool_ebs_->GetQueueLen();
   if (pending < 10) {
+    // Require two samples to ignore transient queue dips.
     ebs_low_load_count_++;
     if (ebs_low_load_count_ >= 2) {
       method_flag_ = true;
@@ -116,7 +117,7 @@ void AsyncIOScheduler::Submit(Task task, QueueType queue_type) {
 
     case QueueType::S3:
       if (!pool_s3_list_.empty()) {
-        // 分发任务
+        // Spread S3 tasks across pools in round-robin order.
         size_t index = s3_index_.fetch_add(1, std::memory_order_relaxed) % pool_s3_list_.size();
         pool_s3_list_[index]->SubmitJob(std::move(task));
       }

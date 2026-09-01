@@ -14,16 +14,16 @@
 #include <mutex>
 #include <algorithm>
 
-// 使用互斥锁以保证多线程安全
+// Protects shared upload state.
 std::mutex upload_mutex;
 
-// 打印命令行参数使用说明
+// Prints command-line usage.
 void PrintUsage(const char* progName) {
     std::cout << "Usage: " << progName << " <buffer_size_bytes> <file_chunk_size_bytes> <s3_part_size_bytes> <num_threads> <num_buffers>\n";
-    std::cout << "Example: " << progName << " 67108864 16384 5242880 4 5\n"; // 64MB, 16KB, 5MB, 4线程, 5个缓冲区
+    std::cout << "Example: " << progName << " 67108864 16384 5242880 4 5\n"; // 64 MB, 16 KB, 5 MB, 4 threads, 5 buffers
 }
 
-// 上传 S3 分段
+// Uploads one S3 part.
 void UploadPart(
     const Aws::S3::S3Client& s3_client, 
     const std::string& bucketName, 
@@ -41,7 +41,7 @@ void UploadPart(
     uploadPartRequest.SetUploadId(uploadId);
     uploadPartRequest.SetPartNumber(partNumber);
 
-    // 设置请求体
+    // Sets the request body.
     auto partStream = Aws::MakeShared<Aws::StringStream>("UploadPartStream");
     partStream->write(buffer + offset, bytesToUpload);
     uploadPartRequest.SetBody(partStream);
@@ -54,7 +54,7 @@ void UploadPart(
         return;
     }
 
-    // 线程安全地存储已完成的分段信息
+    // Stores the completed part under the mutex.
     std::lock_guard<std::mutex> lock(upload_mutex);
     Aws::S3::Model::CompletedPart completedPart;
     completedPart.SetPartNumber(partNumber);
@@ -64,7 +64,7 @@ void UploadPart(
     std::cout << "分段 " << partNumber << " 上传完成\n";
 }
 
-// 为每个缓冲区进行上传
+// Uploads one buffer.
 void UploadBuffer(
     const Aws::S3::S3Client& s3_client,
     const std::string& bucketName, 
@@ -74,7 +74,7 @@ void UploadBuffer(
     size_t s3PartSize, 
     int numThreads) 
 {
-    // 创建 Multipart Upload
+    // Starts a multipart upload.
     Aws::S3::Model::CreateMultipartUploadRequest createRequest;
     createRequest.SetBucket(bucketName);
     createRequest.SetKey(objectKey);
@@ -95,7 +95,7 @@ void UploadBuffer(
     for (size_t offset = 0; offset < bufferSize; offset += s3PartSize, partNumber++) {
         size_t bytesToUpload = std::min(s3PartSize, bufferSize - offset);
 
-        // 多线程执行
+        // Launches an upload thread.
         threads.emplace_back(UploadPart, std::ref(s3_client), bucketName, objectKey, uploadId,
                              buffer, offset, bytesToUpload, partNumber, std::ref(completedParts));
 
@@ -107,17 +107,17 @@ void UploadBuffer(
         }
     }
 
-    // 等待所有线程完成
+    // Joins remaining worker threads.
     for (auto& thread : threads) {
         thread.join();
     }
 
-    // 在所有分段上传完成后，调用 CompleteMultipartUpload 前，排序：
+    // Sorts parts before completing the upload.
     std::sort(completedParts.begin(), completedParts.end(), [](const Aws::S3::Model::CompletedPart &a, const Aws::S3::Model::CompletedPart &b) {
         return a.GetPartNumber() < b.GetPartNumber();
     });
 
-    // 完成上传
+    // Completes the multipart upload.
     Aws::S3::Model::CompleteMultipartUploadRequest completeRequest;
     completeRequest.SetBucket(bucketName);
     completeRequest.SetKey(objectKey);
@@ -141,12 +141,12 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // 解析命令行参数
+    // Parses command-line arguments.
     size_t bufferSize = std::stoull(argv[1]) * 1024 * 1024;
     size_t fileChunkSize = std::stoull(argv[2]) * 1024;
     size_t s3PartSize = std::stoull(argv[3]) * 1024 * 1024;
     int numThreads = std::stoi(argv[4]);
-    int numBuffers = std::stoi(argv[5]); // 缓冲区数量
+    int numBuffers = std::stoi(argv[5]); // Number of buffers.
 
     std::cout << "内存缓冲区大小: " << bufferSize << " 字节\n"
               << "文件写入块大小: " << fileChunkSize << " 字节\n"
@@ -154,14 +154,14 @@ int main(int argc, char* argv[])
               << "线程数: " << numThreads << "\n"
               << "缓冲区数量: " << numBuffers << "\n";
 
-    // 分配并填充缓冲区
+    // Allocates and fills the buffers.
     std::vector<char*> buffers(numBuffers);
     for (int i = 0; i < numBuffers; ++i) {
         buffers[i] = new char[bufferSize];
         std::memset(buffers[i], 'X', bufferSize);
     }
 
-    // ----------------- 本地文件写入 -----------------
+    // Writes the local files.
     const std::string filePrefix = "local_file_";
     auto startFileWrite = std::chrono::steady_clock::now();
     for (int i = 0; i < numBuffers; ++i) {
@@ -194,8 +194,8 @@ int main(int argc, char* argv[])
               << std::chrono::duration_cast<std::chrono::milliseconds>(endFileWrite - startFileWrite).count()
               << " 毫秒\n";
 
-    // ----------------- AWS S3 分段上传（多个缓冲区并发） -----------------
-    auto startTotalUpload = std::chrono::steady_clock::now(); // 记录总上传开始时间
+    // Uploads buffers to S3 in parallel.
+    auto startTotalUpload = std::chrono::steady_clock::now(); // Starts total upload timing.
 
     Aws::SDKOptions options;
     Aws::InitAPI(options);
@@ -216,12 +216,12 @@ int main(int argc, char* argv[])
     }
     Aws::ShutdownAPI(options);
 
-    // 删除缓冲区
+    // Releases the buffers.
     for (auto buffer : buffers) {
         delete[] buffer;
     }
 
-    // 记录总上传时间并输出
+    // Reports total upload time.
     auto endTotalUpload = std::chrono::steady_clock::now();
     std::cout << "总上传耗时: " 
               << std::chrono::duration_cast<std::chrono::milliseconds>(endTotalUpload - startTotalUpload).count()

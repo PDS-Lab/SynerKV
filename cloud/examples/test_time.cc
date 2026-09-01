@@ -14,16 +14,16 @@
 #include <mutex>
 #include <algorithm>
 
-// 使用互斥锁以保证多线程安全
+// Protects shared upload state.
 std::mutex upload_mutex;
 
-// 打印命令行参数使用说明
+// Prints command-line usage.
 void PrintUsage(const char* progName) {
     std::cout << "Usage: " << progName << " <buffer_size_bytes> <file_chunk_size_bytes> <s3_part_size_bytes> <num_threads>\n";
-    std::cout << "Example: " << progName << " 67108864 16384 5242880 4\n"; // 64MB, 16KB, 5MB, 4线程
+    std::cout << "Example: " << progName << " 67108864 16384 5242880 4\n"; // 64 MB, 16 KB, 5 MB, 4 threads
 }
 
-// 上传 S3 分段
+// Uploads one S3 part.
 void UploadPart(
     const Aws::S3::S3Client& s3_client, 
     const std::string& bucketName, 
@@ -41,7 +41,7 @@ void UploadPart(
     uploadPartRequest.SetUploadId(uploadId);
     uploadPartRequest.SetPartNumber(partNumber);
 
-    // 设置请求体
+    // Sets the request body.
     auto partStream = Aws::MakeShared<Aws::StringStream>("UploadPartStream");
     partStream->write(buffer + offset, bytesToUpload);
     uploadPartRequest.SetBody(partStream);
@@ -54,7 +54,7 @@ void UploadPart(
         return;
     }
 
-    // 线程安全地存储已完成的分段信息
+    // Stores the completed part under the mutex.
     std::lock_guard<std::mutex> lock(upload_mutex);
     Aws::S3::Model::CompletedPart completedPart;
     completedPart.SetPartNumber(partNumber);
@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // 解析命令行参数
+    // Parses command-line arguments.
     size_t bufferSize = std::stoull(argv[1]) * 1024 * 1024;
     size_t fileChunkSize = std::stoull(argv[2]) * 1024;
     size_t s3PartSize = std::stoull(argv[3]) * 1024 * 1024;
@@ -82,11 +82,11 @@ int main(int argc, char* argv[])
               << "S3 上传分段大小: " << s3PartSize << " 字节\n"
               << "线程数: " << numThreads << "\n";
 
-    // 分配并填充缓冲区
+    // Allocates and fills the buffer.
     char* buffer = new char[bufferSize];
     std::memset(buffer, 'X', bufferSize);
 
-    // ----------------- 本地文件写入 -----------------
+    // Writes the local file.
     const std::string localFileName = "local_file.bin";
     std::ofstream outFile(localFileName, std::ios::binary);
     if (!outFile) {
@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
               << std::chrono::duration_cast<std::chrono::milliseconds>(endFileWrite - startFileWrite).count()
               << " 毫秒\n";
 
-    // ----------------- AWS S3 分段上传（多线程） -----------------
+    // Uploads parts to S3 in parallel.
     Aws::SDKOptions options;
     Aws::InitAPI(options);
     {
@@ -119,7 +119,7 @@ int main(int argc, char* argv[])
         const std::string bucketName = "generalbuckets-jx";
         const std::string objectKey = "uploaded_object.bin";
 
-        // 创建 Multipart Upload
+        // Starts a multipart upload.
         Aws::S3::Model::CreateMultipartUploadRequest createRequest;
         createRequest.SetBucket(bucketName);
         createRequest.SetKey(objectKey);
@@ -144,7 +144,7 @@ int main(int argc, char* argv[])
         for (size_t offset = 0; offset < bufferSize; offset += s3PartSize, partNumber++) {
             size_t bytesToUpload = std::min(s3PartSize, bufferSize - offset);
 
-            // 多线程执行
+            // Launches an upload thread.
             threads.emplace_back(UploadPart, std::ref(s3_client), bucketName, objectKey, uploadId,
                                  buffer, offset, bytesToUpload, partNumber, std::ref(completedParts));
 
@@ -156,17 +156,17 @@ int main(int argc, char* argv[])
             }
         }
 
-        // 等待所有线程完成
+        // Joins remaining worker threads.
         for (auto& thread : threads) {
             thread.join();
         }
 
-        // 在所有分段上传完成后，调用 CompleteMultipartUpload 前，排序：
+        // Sorts parts before completing the upload.
         std::sort(completedParts.begin(), completedParts.end(), [](const Aws::S3::Model::CompletedPart &a, const Aws::S3::Model::CompletedPart &b) {
             return a.GetPartNumber() < b.GetPartNumber();
         });
 
-        // 完成上传
+        // Completes the multipart upload.
         Aws::S3::Model::CompleteMultipartUploadRequest completeRequest;
         completeRequest.SetBucket(bucketName);
         completeRequest.SetKey(objectKey);
@@ -190,7 +190,7 @@ int main(int argc, char* argv[])
     Aws::ShutdownAPI(options);
 
     delete[] buffer;
-    // ----------------- 删除本地文件 -----------------
+    // Deletes the local file.
     if (std::remove(localFileName.c_str()) == 0) {
         std::cout << "本地文件 " << localFileName << " 删除成功。\n";
     } else {

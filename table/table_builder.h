@@ -259,11 +259,11 @@ class TableBuilder {
   size_t kUploadThreshold; // 8MB
   std::vector<unsigned char> partBuffer;
   std::vector<Aws::S3::Model::CompletedPart> completedParts;
-  std::string upload_id;    // 已获得的分段上传ID
-  std::string bucket_name;  // S3 Bucket名称
-  std::string object_key;   // S3对象的Key
-  std::mutex completed_parts_mutex;       // 保护completedParts的互斥锁
-  std::atomic<int> part_number{1};        // 原子操作的分段编号
+  std::string upload_id;             // Multipart upload ID.
+  std::string bucket_name;           // S3 bucket name.
+  std::string object_key;            // S3 object key.
+  std::mutex completed_parts_mutex;  // Guards completedParts.
+  std::atomic<int> part_number{1};   // Next multipart part number.
   std::shared_ptr<FileWriteTracker> tracker_;
   bool is_s3=false;
   bool upload_while_generate=true;

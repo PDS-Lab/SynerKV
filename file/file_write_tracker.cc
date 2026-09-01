@@ -18,8 +18,10 @@ void FileWriteTracker::TaskFinished(const rocksdb::Status& status) {
   std::lock_guard<std::mutex> lock(mu_);
   assert(pending_tasks_ > 0);
   --pending_tasks_;
+  // Keep the most recently completed task's status.
   status_ = status;
 
+  // Complete only after submission is sealed and all tasks drain.
   if (pending_tasks_ == 0 && finished_adding_) {
     done_ = true;
     cv_.notify_all();

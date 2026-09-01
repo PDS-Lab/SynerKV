@@ -828,16 +828,16 @@ IOStatus WritableFileWriter::WriteDirect(const IOOptions& opts) {
                                              opts, v_info, nullptr);
       } else {
 
-        assert(tracker_);  // 确保 tracker_ 已初始化
+        assert(tracker_);  // Require an initialized tracker.
         // std::cout << "add " << file_name_ << " task at " << write_offset
         //                 << " with " << size << " Data" << std::endl;
-        tracker_->AddTask();  // 提交任务前增加计数
-        std::string data_copy(src, size);  // 拷贝数据
+        tracker_->AddTask();  // Register before submission.
+        std::string data_copy(src, size);  // Keep data alive for the async write.
         uint64_t offset_copy = write_offset;
         AsyncIOScheduler::Instance().Submit([this, data_copy = std::move(data_copy), offset_copy, opts]() {
             IOStatus appends = writable_file_->PositionedAppend(Slice(data_copy.data(), data_copy.size()),
                                                         offset_copy, opts, nullptr);
-            tracker_->TaskFinished(appends);  // 异步任务完成后通知 tracker
+            tracker_->TaskFinished(appends);  // Report the result to the tracker.
           //   if (!appends.ok()) {
           //     std::cerr << "[ERROR] Failed to write to " << file_name_
           //               << " at offset " << offset_copy

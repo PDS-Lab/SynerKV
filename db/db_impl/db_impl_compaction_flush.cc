@@ -3835,7 +3835,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
               Aws::S3::S3Client client;
               Aws::SDKOptions options;
               Aws::InitAPI(options);
-              {// 打开本地文件
+              {  // Open the local file.
                 auto inputData = Aws::MakeShared<Aws::FStream>(
                     "PutObjectInputStream",
                     local_file.c_str(),
@@ -3845,7 +3845,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
                 request.SetBucket(bucket_name);
                 request.SetKey(object_key);
                 request.SetBody(inputData);
-                // 执行上传
+                // Upload the file.
                 auto outcome = client.PutObject(request);
                 if (!outcome.IsSuccess()) {
                   std::cerr << "上传失败: " << outcome.GetError().GetMessage() << std::endl;

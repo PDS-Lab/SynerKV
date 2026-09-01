@@ -17,7 +17,7 @@
 #include <memory>
 #include <algorithm>
 
-// 使用命名空间简化代码
+// Uses S3 model types directly.
 using namespace Aws::S3::Model;
 
 int main(int argc, char* argv[])
@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     
-    // 从命令行读取参数，并默认单位为MB，转换为字节
+    // Parses sizes in MB and converts them to bytes.
     size_t TOTAL_SIZE_MB    = std::stoull(argv[1]);
     size_t CHUNK_SIZE_MB    = std::stoull(argv[2]);
     size_t MIN_PART_SIZE_MB = std::stoull(argv[3]);
@@ -43,14 +43,14 @@ int main(int argc, char* argv[])
         Aws::Client::ClientConfiguration clientConfig;
         Aws::S3::S3Client s3_client(clientConfig);
 
-        // 请替换为实际桶名称和对象键
+        // Sets the target bucket and object key.
         std::string bucketName = "generalbuckets-jx";
         std::string objectKey  = "object-key.txt";
         
-        // 记录上传开始时间
+        // Starts upload timing.
         auto startTime = std::chrono::steady_clock::now();
 
-        // Step 1: 创建分段上传请求
+        // Starts a multipart upload.
         CreateMultipartUploadRequest createRequest;
         createRequest.WithBucket(bucketName.c_str())
                      .WithKey(objectKey.c_str());
@@ -64,28 +64,28 @@ int main(int argc, char* argv[])
         std::string uploadId = createOutcome.GetResult().GetUploadId();
         std::cout << "分段上传创建成功, uploadId: " << uploadId << std::endl;
 
-        // 保存异步上传任务的 future 结果
+        // Tracks asynchronous upload results.
         std::vector<std::future<UploadPartOutcome>> futures;
-        // 保存各分段上传成功后的 ETag 信息
+        // Stores completed part metadata.
         std::vector<CompletedPart> completedParts;
         int partNumber = 1;
 
-        // 用于累积分段数据
+        // Buffers data for the next part.
         std::vector<unsigned char> partBuffer;
         partBuffer.reserve(MIN_PART_SIZE);
 
-        // 模拟生成数据，每次生成 CHUNK_SIZE 数据
+        // Generates data in CHUNK_SIZE chunks.
         for (size_t offset = 0; offset < TOTAL_SIZE; offset += CHUNK_SIZE) {
-            // 生成CHUNK_SIZE数据，填充 'A'
+            // Fills one chunk with 'A'.
             std::vector<unsigned char> chunk(CHUNK_SIZE, 'A');
-            // 累加到缓冲区
+            // Appends the chunk to the part buffer.
             partBuffer.insert(partBuffer.end(), chunk.begin(), chunk.end());
 
-            // 当累计数据达到或超过 MIN_PART_SIZE 时，异步上传一次
+            // Uploads when the minimum part size is reached.
             if (partBuffer.size() >= MIN_PART_SIZE) {
-                // 拷贝当前缓冲区数据用于上传
+                // Copies buffered data for upload.
                 std::vector<unsigned char> dataToUpload = partBuffer;
-                // 清空缓冲区，准备累计下一分段数据
+                // Clears the buffer for the next part.
                 partBuffer.clear();
 
                 int currentPartNumber = partNumber;
@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
                         uploadPartRequest.SetPartNumber(currentPartNumber);
                         uploadPartRequest.SetContentLength(dataToUpload.size());
 
-                        // 构造数据流
+                        // Builds the upload stream.
                         auto partStream = Aws::MakeShared<Aws::StringStream>("UploadPartStream");
                         partStream->write(reinterpret_cast<const char*>(dataToUpload.data()), dataToUpload.size());
                         uploadPartRequest.SetBody(partStream);
@@ -117,7 +117,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        // 循环结束后，如果缓冲区中仍有数据（作为最后一个分段，即使小于 MIN_PART_SIZE 也允许上传）
+        // Uploads remaining data as the final part.
         if (!partBuffer.empty()) {
             std::vector<unsigned char> dataToUpload = partBuffer;
             int currentPartNumber = partNumber;
@@ -146,12 +146,12 @@ int main(int argc, char* argv[])
             ));
         }
 
-        // 等待所有异步任务完成并收集结果
+        // Waits for uploads and collects results.
         for (size_t i = 0; i < futures.size(); ++i) {
             auto outcome = futures[i].get();
             if (!outcome.IsSuccess()) {
                 std::cerr << "分段 " << (i + 1) << " 上传失败，终止上传流程。" << std::endl;
-                // 可在此调用 AbortMultipartUploadRequest 取消上传
+                // Abort the multipart upload here if needed.
                 Aws::ShutdownAPI(options);
                 return 1;
             }
@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
             completedParts.push_back(completedPart);
         }
 
-        // 完成分段上传
+        // Completes the multipart upload.
         CompletedMultipartUpload completedMultipartUpload;
         completedMultipartUpload.WithParts(completedParts);
         CompleteMultipartUploadRequest completeRequest;
@@ -178,7 +178,7 @@ int main(int argc, char* argv[])
         }
         std::cout << "分段上传成功完成." << std::endl;
 
-        // 记录结束时间并计算耗时（毫秒）
+        // Computes the elapsed upload time.
         auto endTime = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         std::cout << "整个文件上传耗时: " << duration.count() << " ms" << std::endl;

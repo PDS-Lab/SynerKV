@@ -2741,7 +2741,7 @@ std::atomic<bool> done = false;
 void printRocksDBStats(rocksdb::DB* db) {
   const std::string& output_file = rocksdb_stat_output_file;
   std::ofstream outFile =
-      std::ofstream(output_file, std::ios_base::app);  // 以追加模式打开文件
+      std::ofstream(output_file, std::ios_base::app);  // Open in append mode.
   if (!outFile.is_open()) {
     std::cerr << "Failed to open output file" << std::endl;
     return;

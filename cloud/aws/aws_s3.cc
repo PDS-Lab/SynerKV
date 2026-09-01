@@ -1063,7 +1063,7 @@ IOStatus S3StorageProvider::DoPutCloudObject(const std::string& local_file,
     //   const uint64_t part_size = 5 * 1024 * 1024;
     //   const int part_count = static_cast<int>((file_size + part_size - 1) / part_size);
 
-    //   // 使用shared_ptr管理同步对象
+    //   // Share synchronization state across tasks.
     //   auto mutex = std::make_shared<std::mutex>();
     //   auto cv_mutex = std::make_shared<std::mutex>();
     //   auto cv = std::make_shared<std::condition_variable>();
